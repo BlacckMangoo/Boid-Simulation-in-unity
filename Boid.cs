@@ -95,4 +95,4 @@ public class Boid : MonoBehaviour
 }
 
 
-optmise it to the max so i can run a lot particles , without changing any calculation methods or results
+
