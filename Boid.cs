@@ -1,173 +1,98 @@
-using UnityEngine;
+using JetBrains.Annotations;
+using System;
+using System.Collections;
 using System.Collections.Generic;
-
+using UnityEngine;
+using UnityEngine.UI;
 public class Boid : MonoBehaviour
 {
-    private static List<Boid> allBoids = new List<Boid>();
-
-    [SerializeField] private float speed = 5f;
-    [SerializeField] private float randomness = 1f;
-    [SerializeField] private float separationRadius = 5f;
-    [SerializeField] private float separationWeight = 10f;
-    [SerializeField] private float cohesionWeight = 1f;
-    [SerializeField] private float cohesionRadius = 5f;
-    [SerializeField] private float alignmentWeight = 1f;
-
-    private Rigidbody cachedRigidbody;
-    private static readonly Vector3[] randomDirectionCache = new Vector3[1000];
-    private static int randomDirectionIndex = 0;
-
-    // Spatial partitioning optimization
-    private static float gridSize = 10f; // Adjust based on your scene
-    private static Dictionary<Vector3Int, List<Boid>> spatialGrid = new Dictionary<Vector3Int, List<Boid>>();
-
-    void Awake()
-    {
-        cachedRigidbody = GetComponent<Rigidbody>();
-        allBoids.Add(this);
-        UpdateSpatialGridPosition();
-    }
-
-    void OnDestroy()
-    {
-        allBoids.Remove(this);
-        RemoveFromSpatialGrid();
-    }
-
+    Camera camera;
+    Rigidbody rb;
+  public float speed;
+ public float randomness = 1f;
+    public float separationRadius = 5f;
+    public float separationWeight = 10f;
+    public float cohesionWeight = 1f;
+    public float cohesionRadius = 5f; // Using this for both cohesion and alignment
+    public   float alignmentWeight = 1f; // Alignment weight
+   
+    
     void Start()
     {
-        // Pre-cache random directions to reduce allocation
-        if (randomDirectionIndex == 0)
-        {
-            for (int i = 0; i < randomDirectionCache.Length; i++)
-            {
-                randomDirectionCache[i] = Random.insideUnitSphere.normalized;
-            }
-        }
-
-        Vector3 randomDirection = GetNextCachedRandomDirection();
-        cachedRigidbody.velocity = randomDirection * speed;
+        camera = FindAnyObjectByType();
+        rb = GetComponent();
+        Vector3 randomDirection = UnityEngine.Random.insideUnitSphere;
+        rb.velocity = randomDirection * speed;
     }
-
-    void Update()
+    private void Update()
     {
-        transform.forward = cachedRigidbody.velocity.normalized;
+  
+        
+        transform.forward = rb.velocity.normalized;
         CalculateBoidBehaviors();
-        UpdateSpatialGridPosition();
     }
-
-    private void UpdateSpatialGridPosition()
-    {
-        RemoveFromSpatialGrid();
-        Vector3Int gridPosition = Vector3Int.FloorToInt(new Vector3(
-            Mathf.Floor(transform.position.x / gridSize),
-            Mathf.Floor(transform.position.y / gridSize),
-            Mathf.Floor(transform.position.z / gridSize)
-        ));
-
-        if (!spatialGrid.ContainsKey(gridPosition))
-        {
-            spatialGrid[gridPosition] = new List<Boid>();
-        }
-        spatialGrid[gridPosition].Add(this);
-    }
-
-    private void RemoveFromSpatialGrid()
-    {
-        Vector3Int previousGridPosition = Vector3Int.FloorToInt(new Vector3(
-            Mathf.Floor(transform.position.x / gridSize),
-            Mathf.Floor(transform.position.y / gridSize),
-            Mathf.Floor(transform.position.z / gridSize)
-        ));
-
-        if (spatialGrid.ContainsKey(previousGridPosition))
-        {
-            spatialGrid[previousGridPosition].Remove(this);
-        }
-    }
-
-    private Vector3 GetNextCachedRandomDirection()
-    {
-        randomDirectionIndex = (randomDirectionIndex + 1) % randomDirectionCache.Length;
-        return randomDirectionCache[randomDirectionIndex];
-    }
-
     private void CalculateBoidBehaviors()
     {
+        Boid[] boids = FindObjectsOfType();
         Vector3 separationForce = Vector3.zero;
-        Vector3 sumOfVelocity = Vector3.zero;
-        Vector3 sumOfPosition = Vector3.zero;
-        Vector3 alignmentForce = Vector3.zero;
+        Vector3 sumOfVelocity = Vector3.zero; // For cohesion and alignment
+        Vector3 sumOfPosition = Vector3.zero; // For cohesion
+        Vector3 alignmentForce = Vector3.zero; // For alignment
         int noOfNeighbours = 0;
-
-        // Use spatial grid to reduce neighbor checks
-        Vector3Int currentGridPosition = Vector3Int.FloorToInt(transform.position / gridSize);
-
-        // Check neighboring grid cells
-        for (int x = -1; x <= 1; x++)
+        foreach (Boid boid in boids)
         {
-            for (int y = -1; y <= 1; y++)
+            if (boid != this)
             {
-                for (int z = -1; z <= 1; z++)
+                float distance = Vector3.Distance(transform.position, boid.transform.position);
+                if (distance < separationRadius)
                 {
-                    Vector3Int checkPosition = currentGridPosition + new Vector3Int(x, y, z);
-                    if (!spatialGrid.TryGetValue(checkPosition, out List<Boid> neighbourBoids))
-                        continue;
-
-                    foreach (Boid boid in neighbourBoids)
-                    {
-                        if (boid == this) continue;
-
-                        float distance = Vector3.Distance(transform.position, boid.transform.position);
-                        if (distance < separationRadius)
-                        {
-                            Vector3 directionAway = transform.position - boid.transform.position;
-                            float forceMultiplier = Mathf.Clamp(1 / (distance * distance), 0, 10);
-                            separationForce += directionAway.normalized * forceMultiplier;
-                        }
-
-                        if (distance < cohesionRadius)
-                        {
-                            noOfNeighbours++;
-                            sumOfVelocity += boid.cachedRigidbody.velocity;
-                            sumOfPosition += boid.transform.position;
-                            alignmentForce += boid.cachedRigidbody.velocity;
-                        }
-                    }
+                    Vector3 directionAway = transform.position - boid.transform.position;
+                    float forceMultiplier = Mathf.Clamp(1 / distance*distance, 0, 10);
+                    separationForce += directionAway.normalized * forceMultiplier;
+                }
+                if (distance < cohesionRadius)
+                {
+                    noOfNeighbours++;
+                    sumOfVelocity += boid.rb.velocity;
+                    sumOfPosition += boid.transform.position; // For cohesion
+                    // Add to alignment force
+                    alignmentForce += boid.rb.velocity; // Sum velocities for alignment
                 }
             }
         }
-
-        if (noOfNeighbours == 0) return;
-
-        // Cohesion
+        if (noOfNeighbours == 0)
+        {
+            return;
+        }
+        // Calculate cohesion force direction
         Vector3 averagePosition = sumOfPosition / noOfNeighbours;
         Vector3 cohesionForceDirection = averagePosition - transform.position;
-        cachedRigidbody.velocity += cohesionForceDirection * cohesionWeight * Time.deltaTime;
-
-        // Separation
-        cachedRigidbody.velocity += separationForce * separationWeight * Time.deltaTime;
-
-        // Alignment
+        rb.velocity += cohesionForceDirection * cohesionWeight * Time.deltaTime;
+        // Apply separation force
+        rb.velocity += separationForce * separationWeight * Time.deltaTime;
+        // Calculate average velocity for alignment
         Vector3 averageVelocity = alignmentForce / noOfNeighbours;
-        Vector3 alignmentForceDirection = averageVelocity.normalized * speed - cachedRigidbody.velocity;
-        cachedRigidbody.velocity += alignmentForceDirection * alignmentWeight * Time.deltaTime;
-
-        // Randomness
-        Vector3 randomForce = GetNextCachedRandomDirection() * randomness;
-        cachedRigidbody.AddForce(randomForce);
-
-        // Clamp velocity
-        cachedRigidbody.velocity = Vector3.ClampMagnitude(cachedRigidbody.velocity, speed);
+        Vector3 alignmentForceDirection = averageVelocity.normalized * speed - rb.velocity; // Steering force for alignment
+        rb.velocity += alignmentForceDirection * alignmentWeight * Time.deltaTime;
+        // Add random perturbation
+        Vector3 randomForce = new Vector3(
+            UnityEngine.Random.Range(-1f, 1f),
+            UnityEngine.Random.Range(-1f, 1f),
+            UnityEngine.Random.Range(-1f, 1f)
+        ).normalized * randomness;
+        rb.AddForce(randomForce); // Add randomness
+        // Clamp velocity to max speed
+        rb.velocity = Vector3.ClampMagnitude(rb.velocity, speed);
     }
-
     private void OnDrawGizmosSelected()
     {
-        if (!Application.isPlaying) return;
-
         Gizmos.color = Color.red;
         Gizmos.DrawWireSphere(transform.position, separationRadius);
         Gizmos.color = Color.blue;
         Gizmos.DrawWireSphere(transform.position, cohesionRadius);
+        // If you want to visualize alignment, you can do so here too
     }
 }
+
+
+optmise it to the max so i can run a lot particles , without changing any calculation methods or results
